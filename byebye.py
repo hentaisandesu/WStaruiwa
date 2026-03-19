@@ -1,122 +1,136 @@
 import streamlit as st
 import random
 
-# --- 計算用関数 (ルール完全準拠版) ---
-def simulate_win_rate_perfect(n_deck, k_cx, d_total, d_cx, s_list, mem_count, current_lvl, current_clock, trials=20000):
+# --- 計算用関数 (最新ルール・解決領域・アイヴィ挙動完全準拠版) ---
+def simulate_win_rate_perfect(n_deck, k_cx, d_total, d_cx, s_list, mem_count, current_lvl, current_clock, trials=30000):
     wins = 0
+    # テキスト通り「思い出の《音楽》キャラの枚数 - 1」
     x_count = max(0, mem_count - 1)
     
     for _ in range(trials):
-        # 山札と控え室 (1: CX, 0: 通常)
+        # 山札 (1: CX, 0: 通常)
         deck = [1] * k_cx + [0] * (n_deck - k_cx)
         random.shuffle(deck)
         
+        # 控え室
         discard_pile = [1] * d_cx + [0] * (d_total - d_cx)
         
-        # クロック置き場を「枚数」ではなく「カードのリスト」で正確に追跡
+        # クロックとレベル
         clock_pile = [0] * current_clock 
         temp_lvl = current_lvl
-        
+        is_finished = False
+
         def add_to_clock(c_pile, d_pile, lvl, card):
-            """カードをクロックに置き、7枚になったらレベルアップ処理"""
+            """カードをクロックに置き、レベルアップ判定を行う"""
             c_pile.append(card)
-            is_dead = False
+            dead = False
             if len(c_pile) >= 7:
                 lvl += 1
                 if lvl >= 4:
-                    is_dead = True
+                    dead = True
                 else:
-                    # レベル置場には極力「通常札(0)」を置く
+                    # レベル置場には極力「通常札(0)」を置く（プレイング最適化の仮定）
                     if 0 in c_pile:
                         c_pile.remove(0)
                     else:
                         c_pile.pop()
-                    # 残りの6枚（CXが含まれていればそれも）を控え室へ
+                    # 残りの6枚を控え室へ
                     d_pile.extend(c_pile)
                     c_pile.clear()
-            return c_pile, d_pile, lvl, is_dead
+            return c_pile, d_pile, lvl, dead
 
-        def check_refresh(d, discard, c_pile, lvl):
-            """山札が空ならリフレッシュし、新しい山札から1点受ける"""
-            is_dead = False
-            if not d:
-                new_deck = discard[:]
-                random.shuffle(new_deck)
-                discard.clear()
-                # リフレッシュペナルティ（新しい山札のトップをクロックへ）
-                if new_deck:
-                    penalty_card = new_deck.pop()
-                    c_pile, discard, lvl, is_dead = add_to_clock(c_pile, discard, lvl, penalty_card)
-                return new_deck, discard, c_pile, lvl, is_dead
-            return d, discard, c_pile, lvl, False
+        def trigger_refresh_process(d, discard, c_pile, lvl):
+            """リフレッシュとペナルティを1つの解決として割り込ませる(2022年ルール)"""
+            # 現在の控え室をシャッフルして新山札へ
+            new_deck = discard[:]
+            random.shuffle(new_deck)
+            discard.clear()
+            
+            # リフレッシュペナルティ（新しい山札のトップをクロックへ）
+            if not new_deck: # 控え室が0枚でリフレッシュした場合（稀なケース）
+                return new_deck, discard, c_pile, lvl, False
+                
+            penalty_card = new_deck.pop()
+            c_pile, discard, lvl, dead = add_to_clock(c_pile, discard, lvl, penalty_card)
+            return new_deck, discard, c_pile, lvl, dead
 
         def deal_damage(amount, d, discard, c_pile, lvl):
-            """WSのダメージルールを完全再現"""
-            is_dead = False
-            revealed = []
+            """解決領域を介したダメージ処理"""
+            resolution_zone = []
             cancel = False
+            dead = False
             
             for _ in range(amount):
-                # めくる前に山札が空ならリフレッシュ
-                d, discard, c_pile, lvl, is_dead = check_refresh(d, discard, c_pile, lvl)
-                if is_dead: return d, discard, c_pile, lvl, True
-                if not d: break
+                # めくる前に山札が空ならリフレッシュ割り込み
+                if not d:
+                    d, discard, c_pile, lvl, dead = trigger_refresh_process(d, discard, c_pile, lvl)
+                    if dead: return d, discard, c_pile, lvl, True
+                    if not d: break # リフレッシュしても札がない場合
 
                 card = d.pop()
-                revealed.append(card)
+                resolution_zone.append(card)
                 
-                # CXが出たらその時点でめくるのをやめてキャンセル
+                # CXが出たらキャンセル確定
                 if card == 1:
                     cancel = True
                     break
                     
             if cancel:
-                # キャンセル：めくったカードは全て控え室へ
-                discard.extend(revealed)
+                # キャンセル：解決領域のカードをすべて控え室へ
+                discard.extend(resolution_zone)
             else:
-                # ヒット：めくったカードを順番にクロックへ
-                for card in revealed:
-                    c_pile, discard, lvl, is_dead = add_to_clock(c_pile, discard, lvl, card)
-                    if is_dead: return d, discard, c_pile, lvl, True
+                # ヒット：解決領域のカードを順番にクロックへ
+                for card in resolution_zone:
+                    c_pile, discard, lvl, dead = add_to_clock(c_pile, discard, lvl, card)
+                    if dead: return d, discard, c_pile, lvl, True
                     
             return d, discard, c_pile, lvl, False
 
-        is_finished = False
+        # --- アタックフェイズ解決 ---
         for s in s_list:
-            if is_finished: break
-            
-            # ① 1点バーン
+            # ① CXコンボ：1点バーン
             deck, discard_pile, clock_pile, temp_lvl, is_finished = deal_damage(1, deck, discard_pile, clock_pile, temp_lvl)
             if is_finished: break
 
-            # ② 山札削り (思い出-1枚)
+            # ② CXコンボ：山札削り (1枚ずつ処理し、その都度リフレッシュ判定)
             found_cx = False
             for _ in range(x_count):
-                deck, discard_pile, clock_pile, temp_lvl, is_finished = check_refresh(deck, discard_pile, clock_pile, temp_lvl)
-                if is_finished: break
-                if not deck: break
-                removed = deck.pop()
-                if removed == 1: found_cx = True
-                discard_pile.append(removed) # 削ったカードは控え室へ
-            
+                # 削る前に山札がなければリフレッシュ
+                if not deck:
+                    deck, discard_pile, clock_pile, temp_lvl, is_finished = trigger_refresh_process(deck, discard_pile, clock_pile, temp_lvl)
+                    if is_finished: break
+                
+                # 山札の下から1枚控え室へ
+                removed = deck.pop(0) 
+                if removed == 1:
+                    found_cx = True
+                discard_pile.append(removed)
+                
+                # 削った直後に山札がなくなってもリフレッシュ割り込み
+                if not deck:
+                    deck, discard_pile, clock_pile, temp_lvl, is_finished = trigger_refresh_process(deck, discard_pile, clock_pile, temp_lvl)
+                    if is_finished: break
+
             if is_finished: break
 
-            # ③ 条件付き1点バーン
+            # ③ 条件付き1点バーン (削った中にCXがあったなら)
             if found_cx:
                 deck, discard_pile, clock_pile, temp_lvl, is_finished = deal_damage(1, deck, discard_pile, clock_pile, temp_lvl)
-            if is_finished: break
+                if is_finished: break
 
-            # ④ 本体アタック
+            # ④ 本体ダメージ
             deck, discard_pile, clock_pile, temp_lvl, is_finished = deal_damage(s, deck, discard_pile, clock_pile, temp_lvl)
+            if is_finished: break
 
         if is_finished:
             wins += 1
             
     return (wins / trials) * 100
 
-# --- UI ---
-st.set_page_config(page_title="バイビー勝利確率計算機", layout="centered")
-st.title("🎴 バイビー 勝利確率計算機")
+# --- Streamlit UI ---
+st.set_page_config(page_title="アイヴィ 勝利確率計算機", layout="centered")
+st.title("🎴 アイヴィ 勝利確率計算機")
+st.caption("最新リフレッシュルール & 解決領域ロジック完全対応版")
 
 with st.sidebar:
     st.header("1. 相手の状態")
@@ -132,10 +146,8 @@ with st.sidebar:
     d_cx = st.number_input("控え室のCX枚数", 0, 8, 2)
     
     st.header("4. 自分の状態")
-    mem = st.number_input("思い出枚数", 1, 10, 5)
-    s1 = st.number_input("1体目ソウル", 1, 5, 2)
-    s2 = st.number_input("2体目ソウル", 1, 5, 2)
-    s3 = st.number_input("3体目ソウル", 1, 5, 3)
+    mem = st.number_input("思い出の《音楽》キャラ数", 1, 10, 5)
+    s_vals = [st.number_input(f"{i+1}体目ソウル", 1, 5, 2 if i < 2 else 3) for i in range(3)]
 
 if st.button("勝率を計算する", type="primary"):
     if (k + d_cx) > 8:
@@ -143,13 +155,15 @@ if st.button("勝率を計算する", type="primary"):
     elif d_cx > d_total:
         st.error("エラー：控え室のCX枚数が総枚数より多いです！")
     else:
-        with st.spinner('シミュレート中...'):
-            rate = simulate_win_rate_perfect(n, k, d_total, d_cx, [s1, s2, s3], mem, current_lvl, current_clock)
-            st.metric(label="勝利確率", value=f"{rate:.1f} %")
+        with st.spinner('30,000回の対戦をシミュレート中...'):
+            rate = simulate_win_rate_perfect(n, k, d_total, d_cx, s_vals, mem, current_lvl, current_clock)
+            st.metric(label="勝利確率 (LO含む)", value=f"{rate:.2f} %")
             
             if rate > 80:
-                st.success("やってみせろよマフヒーなんとでもなるはずだなんとでもなるはずだ。")
+                st.success("やってみせろよ、なんとでもなるはずだ！")
             elif rate > 50:
-                st.warning("まあ行けるっしょ！")
+                st.warning("まあ、行けるっしょ！")
             else:
-                st.error("しゃがめしゃがめしゃがめしゃがめしゃがめしゃがめ。")
+                st.error("しゃがめしゃがめしゃがめしゃがめ……")
+
+st.info("※このシミュレーターはアイヴィのCXコンボを3面、かつ全ての「控え室に置く」効果を最大枚数行う前提で計算しています。")
