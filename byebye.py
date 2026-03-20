@@ -108,7 +108,7 @@ def simulate_win_rate_perfect(n_deck, k_cx, d_total, d_cx, s_list, mem_count, cu
 # --- Streamlit UI ---
 st.set_page_config(page_title="アイヴィ 勝利確率計算機", layout="centered")
 st.title("🎴 アイヴィ 勝利確率計算機")
-st.caption("最新リフレッシュルール & 解決領域ロジック完全対応版 (バグ修正済)")
+st.caption("連動は任意効果ですが、全て使う想定で計算します")
 
 with st.sidebar:
     st.header("1. 相手の状態")
