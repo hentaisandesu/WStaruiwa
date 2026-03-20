@@ -1,7 +1,7 @@
 import streamlit as st
 import random
 
-# --- 計算用関数 (最新ルール・解決領域・アイヴィ挙動完全準拠版) ---
+# --- 計算用関数 (最新ルール・解決領域・挙動完全準拠版) ---
 def simulate_win_rate_perfect(n_deck, k_cx, d_total, d_cx, s_list, mem_count, current_lvl, current_clock, trials=30000):
     wins = 0
     # テキスト通り「思い出の《音楽》キャラの枚数 - 1」
@@ -29,11 +29,10 @@ def simulate_win_rate_perfect(n_deck, k_cx, d_total, d_cx, s_list, mem_count, cu
                 if lvl >= 4:
                     dead = True
                 else:
-                    # レベル置場には極力「通常札(0)」を置く（プレイング最適化の仮定）
-                    if 0 in c_pile:
-                        c_pile.remove(0)
-                    else:
-                        c_pile.pop()
+                    # 【修正ポイント】
+                    # カードを不当に操作せず、最後に置かれたカードをそのままレベル置場へ。
+                    # これにより、CXが意図せず控え室に送られるバグを解消。
+                    c_pile.pop() 
                     # 残りの6枚を控え室へ
                     d_pile.extend(c_pile)
                     c_pile.clear()
@@ -47,7 +46,7 @@ def simulate_win_rate_perfect(n_deck, k_cx, d_total, d_cx, s_list, mem_count, cu
             discard.clear()
             
             # リフレッシュペナルティ（新しい山札のトップをクロックへ）
-            if not new_deck: # 控え室が0枚でリフレッシュした場合（稀なケース）
+            if not new_deck: 
                 return new_deck, discard, c_pile, lvl, False
                 
             penalty_card = new_deck.pop()
@@ -128,9 +127,9 @@ def simulate_win_rate_perfect(n_deck, k_cx, d_total, d_cx, s_list, mem_count, cu
     return (wins / trials) * 100
 
 # --- Streamlit UI ---
-st.set_page_config(page_title="アイヴィ 勝利確率計算機", layout="centered")
-st.title("🎴 アイヴィ 勝利確率計算機")
-st.caption("最新リフレッシュルール & 解決領域ロジック完全対応版")
+st.set_page_config(page_title="バイビー 勝利確率計算機", layout="centered")
+st.title("🎴 バイビー 勝利確率計算機")
+st.caption("(バグ修正済)")
 
 with st.sidebar:
     st.header("1. 相手の状態")
@@ -157,9 +156,11 @@ if st.button("勝率を計算する", type="primary"):
     else:
         with st.spinner('30,000回の対戦をシミュレート中...'):
             rate = simulate_win_rate_perfect(n, k, d_total, d_cx, s_vals, mem, current_lvl, current_clock)
-            st.metric(label="勝利確率 (LO含む)", value=f"{rate:.2f} %")
+            st.metric(label="勝利確率", value=f"{rate:.2f} %")
             
-            if rate > 80:
+            if rate == 100.00:
+                st.success(おめでとう！ありがとう！")
+            elif rate > 80:
                 st.success("やってみせろよ、なんとでもなるはずだ！")
             elif rate > 50:
                 st.warning("まあ、行けるっしょ！")
