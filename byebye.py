@@ -138,10 +138,10 @@ if st.button("勝率を計算する", type="primary"):
             st.metric(label="勝利確率", value=f"{rate:.2f} %")
             
             if rate == 100.00:
-                st.success("おめでとうありがとう！")
+                st.success("GG！")
             elif rate > 80:
-                st.success("やってみせろよ、なんとでもなるはずだ！")
+                st.success("なんとでもなるはずだ！")
             elif rate > 50:
-                st.warning("まあ、行けるっしょ！")
+                st.warning("五分以上！")
             else:
-                st.error("しゃがめしゃがめしゃがめしゃがめ……")
+                st.error("しゃがむ？")
