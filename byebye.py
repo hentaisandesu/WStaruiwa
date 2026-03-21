@@ -125,7 +125,7 @@ with st.sidebar:
     
     st.header("4. 自分の状態")
     mem = st.number_input("思い出の《音楽》キャラ数", 1, 10, 1)
-    s_vals = [st.number_input(f"{i+1}体目ソウル", 1, 5, 1) for i in range(3)]
+    s_vals = [st.number_input(f"{i+1}体目ソウル", 0, 5, 3) for i in range(3)]
 
 if st.button("勝率を計算する", type="primary"):
     if (k + d_cx) > 8:
