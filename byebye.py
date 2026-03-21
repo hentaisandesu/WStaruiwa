@@ -1,4 +1,4 @@
-import streamlit as st
+import streamlit as st # 【修正】大文字のImportを小文字に修正しました
 import random
 
 def simulate_win_rate_perfect(n_deck, k_cx, d_total, d_cx, s_list, mem_count, current_lvl, current_clock, trials=30000):
@@ -40,6 +40,10 @@ def simulate_win_rate_perfect(n_deck, k_cx, d_total, d_cx, s_list, mem_count, cu
             return new_deck, discard, c_pile, lvl, dead
 
         def deal_damage(amount, d, discard, c_pile, lvl):
+            # 【修正】ソウル0以下の場合はダメージ処理（めくる処理）を行わず即終了
+            if amount <= 0:
+                return d, discard, c_pile, lvl, False
+
             resolution_zone = []
             cancel = False
             dead = False
@@ -53,7 +57,7 @@ def simulate_win_rate_perfect(n_deck, k_cx, d_total, d_cx, s_list, mem_count, cu
                 card = d.pop()
                 resolution_zone.append(card)
                 
-                # 【修正の核心】めくった直後、山札が0になった瞬間にリフレッシュを割り込ませる
+                # めくった直後、山札が0になった瞬間にリフレッシュを割り込ませる
                 if not d:
                     d, discard, c_pile, lvl, dead = trigger_refresh_process(d, discard, c_pile, lvl)
                     if dead: return d, discard, c_pile, lvl, True
@@ -73,9 +77,11 @@ def simulate_win_rate_perfect(n_deck, k_cx, d_total, d_cx, s_list, mem_count, cu
 
         # --- アタックフェイズ解決 ---
         for s in s_list:
+            # コンボ1：1点バーン（ソウル0でも発動）
             deck, discard_pile, clock_pile, temp_lvl, is_finished = deal_damage(1, deck, discard_pile, clock_pile, temp_lvl)
             if is_finished: break
 
+            # コンボ2：山札削り（ソウル0でも発動）
             found_cx = False
             for _ in range(x_count):
                 if not deck:
@@ -93,10 +99,12 @@ def simulate_win_rate_perfect(n_deck, k_cx, d_total, d_cx, s_list, mem_count, cu
 
             if is_finished: break
 
+            # コンボ3：条件付き追加1点バーン（ソウル0でも発動）
             if found_cx:
                 deck, discard_pile, clock_pile, temp_lvl, is_finished = deal_damage(1, deck, discard_pile, clock_pile, temp_lvl)
                 if is_finished: break
 
+            # 本体ダメージ（sが0の場合は何も起きない）
             deck, discard_pile, clock_pile, temp_lvl, is_finished = deal_damage(s, deck, discard_pile, clock_pile, temp_lvl)
             if is_finished: break
 
@@ -108,12 +116,12 @@ def simulate_win_rate_perfect(n_deck, k_cx, d_total, d_cx, s_list, mem_count, cu
 # --- Streamlit UI ---
 st.set_page_config(page_title="アイヴィ 勝利確率計算機", layout="centered")
 st.title("🎴 アイヴィ 勝利確率計算機")
-st.caption("連動は任意効果ですが、全て使う想定で計算します")
+st.caption("連動は任意効果ですが、全て使う想定で計算します（ソウル0入力でサイドアタック等も再現可能）")
 
 with st.sidebar:
     st.header("1. 相手の状態")
     current_lvl = st.slider("現在のレベル", 0, 3, 3)
-    current_clock = st.slider("現在のクロック", 0, 6, 1) # デフォルトを1にしました
+    current_clock = st.slider("現在のクロック", 0, 6, 0) 
     
     st.header("2. 山札の情報")
     n = st.number_input("山札の残り枚数", 1, 50, 1)
@@ -124,7 +132,9 @@ with st.sidebar:
     d_cx = st.number_input("控え室のCX枚数", 0, 8, 0)
     
     st.header("4. 自分の状態")
-    mem = st.number_input("思い出の《音楽》キャラ数", 1, 10, 1)
+    mem = st.number_input("思い出の《音楽》キャラ数", 0, 10, 6)
+    
+    # 最小値を0に設定しているため、0を入力可能
     s_vals = [st.number_input(f"{i+1}体目ソウル", 0, 5, 3) for i in range(3)]
 
 if st.button("勝率を計算する", type="primary"):
